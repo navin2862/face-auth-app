@@ -1,0 +1,16 @@
+# Used by the Dockerfile (server only: no Streamlit, headless OpenCV)
+setuptools<81
+numpy
+opencv-python-headless
+Pillow
+Click
+dlib-bin
+face_recognition_models
+fastapi
+uvicorn
+python-multipart
+email-validator
+psycopg[binary]
+python-dotenv
+pyjwt
+pwdlib[argon2]

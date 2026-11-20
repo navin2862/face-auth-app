@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Face Authorization</title>
+<style>
+:root{--bg:#e9edf1;--panel:#fff;--ink:#14202b;--mute:#5c6b79;--line:#cfd7df;--ok:#1f8a4c;--bad:#c62f2f;--navy:#1d4f7c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,"Segoe UI",sans-serif}
+h1,h2{font-family:Georgia,"Times New Roman",serif;font-weight:700;margin:0}
+h1{font-size:22px}h2{font-size:18px;margin-bottom:10px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 24px;background:var(--navy);color:#fff}
+header span{opacity:.85;margin-right:12px}
+main{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:18px;padding:18px 24px;max-width:1280px;margin:0 auto}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.stage{position:relative;background:#0b1319;border-radius:6px;overflow:hidden;aspect-ratio:16/9}
+.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.stage p{position:absolute;inset:0;margin:0;display:grid;place-items:center;color:#9fb0bf;text-align:center;padding:20px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+button{font:inherit;font-weight:600;padding:8px 14px;border-radius:6px;border:1px solid var(--navy);background:var(--navy);color:#fff;cursor:pointer}
+button.ghost{background:#fff;color:var(--navy)}
+button.danger{background:#fff;color:var(--bad);border-color:var(--bad);padding:4px 10px}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,input:focus-visible{outline:3px solid #7fb3e6;outline-offset:2px}
+input{font:inherit;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;margin-top:4px}
+label{display:block;margin-top:10px;font-weight:600}
+.hint{color:var(--mute);font-size:13px;margin:6px 0 0}
+#shots{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+#shots img{width:72px;height:54px;object-fit:cover;border-radius:4px;border:2px solid var(--line);cursor:pointer}
+.person{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+.person b{flex:1;overflow-wrap:anywhere}.person small{color:var(--mute)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{text-align:left;padding:6px 8px;border-top:1px solid var(--line)}
+th{color:var(--mute);font-weight:600;border-top:0}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}
+#msg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);max-width:90vw;padding:10px 16px;border-radius:8px;color:#fff;box-shadow:0 4px 16px #0004;z-index:5}
+#msg.bad{background:var(--bad)}#msg.ok{background:var(--ok)}
+#auth{max-width:380px;margin:60px auto}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>Face Authorization</h1>
+  <div id="who" hidden><span id="whoami"></span><button class="ghost" id="logoutBtn">Log out</button></div>
+</header>
+
+<section id="auth" class="card">
+  <h2>Log in</h2>
+  <label for="email">Email</label><input id="email" type="email" autocomplete="username">
+  <label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password">
+  <div class="row"><button id="loginBtn">Log in</button><button class="ghost" id="regBtn">Create account</button></div>
+  <p class="hint">New accounts need a password of at least 8 characters.</p>
+</section>
+
+<main id="app" hidden>
+  <div class="col">
+    <section class="card">
+      <h2>Live camera</h2>
+      <div class="stage">
+        <video id="video" muted playsinline></video>
+        <canvas id="overlay"></canvas>
+        <p id="stageNote">Start the camera to begin.</p>
+      </div>
+      <div class="row">
+        <button id="camBtn">Start camera</button>
+        <button id="liveBtn" disabled>Start recognition</button>
+        <span id="liveStatus" class="hint"></span>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Recent detections</h2>
+      <table><thead><tr><th>Time</th><th>Name</th><th>Result</th></tr></thead><tbody id="log"></tbody></table>
+      <p class="hint" id="logEmpty">Nothing logged yet. Detections are saved about every 10 seconds while recognition runs.</p>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="card">
+      <h2>Add a person</h2>
+      <label for="pname">Name</label><input id="pname" maxlength="100">
+      <p class="hint">Take 3 or 4 photos: straight on, slightly left, slightly right. Use good light, one face, and sit close.</p>
+      <div class="row">
+        <button id="shotBtn" class="ghost" disabled>Take photo</button>
+        <span class="hint" id="shotCount">0 / 8</span>
+      </div>
+      <div id="shots"></div>
+      <div class="row"><button id="saveBtn">Save person</button></div>
+    </section>
+    <section class="card">
+      <h2>Authorized people</h2>
+      <div id="people"></div>
+      <p class="hint" id="peopleEmpty">Nobody yet. Add a person above.</p>
+    </section>
+  </div>
+</main>
+<div id="msg" hidden></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let token = null, stream = null, live = false, lastLog = 0, shots = [], logTimer = null;
+try { token = sessionStorage.getItem("token"); } catch (e) {}
+
+function msg(text, bad = true) {
+  const m = $("msg"); m.textContent = text; m.className = bad ? "bad" : "ok"; m.hidden = false;
+  clearTimeout(msg.t); msg.t = setTimeout(() => m.hidden = true, 6000);
+}
+const run = fn => async (...a) => { try { await fn(...a); } catch (e) { if (e.message !== "401") msg(e.message); } };
+function el(tag, props = {}, ...kids) {
+  const n = Object.assign(document.createElement(tag), props); n.append(...kids); return n;
+}
+
+async function api(path, opts = {}) {
+  opts.headers = Object.assign({}, opts.headers, token ? { Authorization: "Bearer " + token } : {});
+  const r = await fetch(path, opts);
+  if (r.status === 401 && token) { logout("Your session expired. Log in again."); throw new Error("401"); }
+  if (!r.ok) {
+    let d = r.statusText;
+    try { const j = await r.json(); d = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); } catch (e) {}
+    throw new Error(d);
+  }
+  return r.status === 204 ? null : r.json();
+}
+
+// ---------- login ----------
+function setToken(t) { token = t; try { sessionStorage.setItem("token", t || ""); } catch (e) {} }
+
+async function login() {
+  const body = new URLSearchParams({ username: $("email").value.trim(), password: $("pw").value });
+  setToken((await api("/auth/login", { method: "POST", body })).access_token);
+  await showApp();
+}
+async function register() {
+  await api("/auth/register", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: $("email").value.trim(), password: $("pw").value }),
+  });
+  await login();
+}
+async function showApp() {
+  const me = await api("/me");
+  $("whoami").textContent = me.email;
+  $("auth").hidden = true; $("app").hidden = false; $("who").hidden = false;
+  await Promise.all([loadPeople(), loadLog()]);
+  clearInterval(logTimer); logTimer = setInterval(() => loadLog().catch(() => {}), 5000);
+}
+function logout(note) {
+  stopLive(); stopCam(); clearInterval(logTimer); setToken(null);
+  $("app").hidden = true; $("who").hidden = true; $("auth").hidden = false; $("pw").value = "";
+  if (note) msg(note);
+}
+
+// ---------- camera ----------
+async function startCam() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+  } catch (e) { throw new Error("Could not open the camera. Allow camera access for this page and close other apps using it."); }
+  const v = $("video"); v.srcObject = stream; await v.play();
+  $("overlay").width = v.videoWidth; $("overlay").height = v.videoHeight;
+  $("stageNote").hidden = true; $("camBtn").textContent = "Stop camera";
+  $("liveBtn").disabled = false; $("shotBtn").disabled = false;
+}
+function stopCam() {
+  stopLive();
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; $("video").srcObject = null; $("stageNote").hidden = false;
+  $("camBtn").textContent = "Start camera"; $("liveBtn").disabled = true; $("shotBtn").disabled = true;
+}
+function grab(maxW) {
+  const v = $("video"), s = Math.min(1, maxW / v.videoWidth), c = document.createElement("canvas");
+  c.width = Math.round(v.videoWidth * s); c.height = Math.round(v.videoHeight * s);
+  c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+  return new Promise(res => c.toBlob(b => res({ blob: b, w: c.width, url: URL.createObjectURL(b) }), "image/jpeg", 0.88));
+}
+
+// ---------- live recognition ----------
+function draw(faces, k) {
+  const c = $("overlay"), x = c.getContext("2d");
+  x.clearRect(0, 0, c.width, c.height); x.lineWidth = 3; x.font = "600 18px system-ui";
+  for (const f of faces) {
+    const [t, r, b, l] = f.box.map(v => v * k), col = f.authorized ? "#2ea043" : "#e5484d";
+    const label = f.authorized ? f.name : "Unauthorized", w = x.measureText(label).width + 14;
+    x.strokeStyle = col; x.strokeRect(l, t, r - l, b - t);
+    x.fillStyle = col; x.fillRect(l, b, w, 26); x.fillStyle = "#fff"; x.fillText(label, l + 7, b + 19);
+  }
+}
+function setLive(on) { live = on; $("liveBtn").textContent = on ? "Stop recognition" : "Start recognition"; if (!on) { $("liveStatus").textContent = ""; const c = $("overlay"); c.getContext("2d").clearRect(0, 0, c.width, c.height); } }
+function stopLive() { setLive(false); }
+async function loop() {
+  while (live) {
+    try {
+      const f = await grab(960), now = Date.now(), doLog = now - lastLog > 10000;
+      const fd = new FormData(); fd.append("photo", f.blob, "frame.jpg");
+      const r = await api("/recognize?log=" + doLog, { method: "POST", body: fd });
+      if (doLog && r.face_count) lastLog = now;
+      draw(r.faces, $("video").videoWidth / f.w);
+      $("liveStatus").textContent = r.face_count ? `${r.authorized_count} of ${r.face_count} authorized` : "No face in view";
+    } catch (e) { if (e.message !== "401") msg(e.message); setLive(false); return; }
+    await new Promise(r => setTimeout(r, 250));
+  }
+}
+
+// ---------- people ----------
+function renderShots() {
+  $("shots").replaceChildren(...shots.map((s, i) =>
+    el("img", { src: s.url, title: "Click to remove", onclick: () => { shots.splice(i, 1); renderShots(); } })));
+  $("shotCount").textContent = shots.length + " / 8";
+}
+async function takeShot() {
+  if (shots.length >= 8) throw new Error("You can add at most 8 photos at a time.");
+  shots.push(await grab(1280)); renderShots();
+}
+function formWithShots() {
+  const fd = new FormData(); shots.forEach((s, i) => fd.append("photos", s.blob, `shot${i}.jpg`)); return fd;
+}
+async function savePerson() {
+  const name = $("pname").value.trim();
+  if (!name) throw new Error("Enter a name first.");
+  if (!shots.length) throw new Error("Take at least one photo first.");
+  const fd = formWithShots(); fd.append("name", name);
+  const p = await api("/people", { method: "POST", body: fd });
+  msg(`Saved ${p.name} with ${p.photo_count} photo(s).`, false);
+  shots = []; renderShots(); $("pname").value = ""; await loadPeople();
+}
+async function addPhotos(id, name) {
+  if (!shots.length) throw new Error("Take photos first, then choose Add photos.");
+  const p = await api(`/people/${id}/photos`, { method: "POST", body: formWithShots() });
+  msg(`${name} now has ${p.photo_count} photo(s).`, false);
+  shots = []; renderShots(); await loadPeople();
+}
+async function removePerson(id, name) {
+  if (!confirm(`Remove ${name}? Their saved face data will be deleted.`)) return;
+  await api("/people/" + id, { method: "DELETE" }); await loadPeople();
+}
+async function loadPeople() {
+  const list = await api("/people");
+  $("peopleEmpty").hidden = list.length > 0;
+  $("people").replaceChildren(...list.map(p => el("div", { className: "person" },
+    el("b", {}, p.name), el("small", {}, p.photo_count + " photo" + (p.photo_count === 1 ? "" : "s")),
+    el("button", { className: "ghost", textContent: "Add photos", onclick: run(() => addPhotos(p.id, p.name)) }),
+    el("button", { className: "danger", textContent: "Remove", onclick: run(() => removePerson(p.id, p.name)) }))));
+}
+async function loadLog() {
+  const rows = await api("/detections?limit=15");
+  $("logEmpty").hidden = rows.length > 0;
+  $("log").replaceChildren(...rows.map(r => el("tr", {},
+    el("td", {}, r.timestamp), el("td", {}, r.authorized ? r.name : "Unknown face"),
+    el("td", { className: r.authorized ? "ok" : "bad" }, r.authorized ? "Authorized" : "Unauthorized"))));
+}
+
+// ---------- wiring ----------
+$("loginBtn").onclick = run(login);
+$("regBtn").onclick = run(register);
+$("pw").onkeydown = e => { if (e.key === "Enter") run(login)(); };
+$("logoutBtn").onclick = () => logout();
+$("camBtn").onclick = run(() => stream ? stopCam() : startCam());
+$("liveBtn").onclick = () => { if (live) stopLive(); else { setLive(true); loop(); } };
+$("shotBtn").onclick = run(takeShot);
+$("saveBtn").onclick = run(savePerson);
+if (token) run(showApp)().catch(() => {});
+</script>
+</body>
+</html>

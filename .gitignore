@@ -1,0 +1,6 @@
+.env
+venv/
+__pycache__/
+*.pyc
+*.dbauthorized_faces/
+face_auth_backend/
